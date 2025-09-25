@@ -1,0 +1,313 @@
+# ======================= DATA & AUGMENTATION (SENİN BLOĞUN) =======================
+import numpy as np, torch, cv2, math, random
+from torch.utils.data import Dataset, DataLoader, random_split
+from pathlib import Path
+from PIL import Image, ImageFile
+import matplotlib.pyplot as plt
+from albumentations.pytorch import ToTensorV2
+import albumentations as A
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+DATA_DIR = Path("/kaggle/input/car-brand-classification-dataset/Car Brand Classification Dataset")
+TRAIN_DIR, VAL_DIR, TEST_DIR = DATA_DIR/"train", DATA_DIR/"val", DATA_DIR/"test"
+IMG_SIZE, BATCH_SIZE, NUM_WORKERS, SEED = 224, 32, 2, 42
+IMG_EXTS = {".jpg",".jpeg",".png",".bmp",".webp",".tiff",".jfif",".gif"}
+
+try:
+    mean_rgb, std_rgb = mean_rgb.tolist(), std_rgb.tolist()
+except Exception:
+    mean_rgb = [0.485, 0.456, 0.406]
+    std_rgb  = [0.229, 0.224, 0.225]
+
+def RRC(size, **kwargs):
+    try:
+        return A.RandomResizedCrop(size=(size, size), **kwargs)
+    except TypeError:
+        return A.RandomResizedCrop(height=size, width=size, **kwargs)
+
+train_aug = A.Compose([
+    RRC(IMG_SIZE, scale=(0.85, 1.0), ratio=(0.9, 1.1)),
+    A.HorizontalFlip(p=0.5),
+    A.Rotate(limit=8, p=0.6),
+    A.ColorJitter(brightness=0.12, contrast=0.12, saturation=0.12, hue=0.02, p=0.7),
+    A.Normalize(mean=mean_rgb, std=std_rgb),
+    ToTensorV2(),
+])
+
+valid_aug = A.Compose([
+    A.LongestMaxSize(max_size=int(IMG_SIZE*1.15)),
+    A.PadIfNeeded(min_height=IMG_SIZE, min_width=IMG_SIZE),
+    A.CenterCrop(IMG_SIZE, IMG_SIZE),
+    A.Normalize(mean=mean_rgb, std=std_rgb),
+    ToTensorV2(),
+])
+
+class AlbumentationsImageFolder(Dataset):
+    def __init__(self, root_dir: Path, transform):
+        self.root = Path(root_dir)
+        self.transform = transform
+        self.samples, self.class_to_idx = [], {}
+        classes = sorted([d.name for d in self.root.iterdir() if d.is_dir()])
+        self.class_to_idx = {c:i for i,c in enumerate(classes)}
+        for c in classes:
+            for p in (self.root / c).rglob("*"):
+                if p.is_file() and p.suffix.lower() in IMG_EXTS:
+                    self.samples.append((str(p), self.class_to_idx[c]))
+    def __len__(self): return len(self.samples)
+    def __getitem__(self, idx):
+        path, label = self.samples[idx]
+        with Image.open(path) as im:
+            img = np.asarray(im.convert("RGB"))
+        img = self.transform(image=img)["image"]
+        return img, label
+
+torch.manual_seed(SEED)
+if VAL_DIR.exists():
+    train_ds = AlbumentationsImageFolder(TRAIN_DIR, train_aug)
+    val_ds   = AlbumentationsImageFolder(VAL_DIR,   valid_aug)
+else:
+    full_ds  = AlbumentationsImageFolder(TRAIN_DIR, train_aug)
+    val_len  = max(1, int(0.15 * len(full_ds)))
+    train_len = len(full_ds) - val_len
+    gen = torch.Generator().manual_seed(SEED)
+    train_ds, val_ds = random_split(full_ds, [train_len, val_len], generator=gen)
+    # val subset'in transform'unu valid_aug'a çevir
+    val_ds.dataset.transform = valid_aug
+
+test_ds = AlbumentationsImageFolder(TEST_DIR, valid_aug) if TEST_DIR.exists() else None
+
+train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True,  num_workers=NUM_WORKERS, pin_memory=True)
+val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, pin_memory=True)
+test_loader  = DataLoader(test_ds,  batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, pin_memory=True) if test_ds else None
+
+# ---- Sınıf haritaları (Subset/ImageFolder fark etmez) ----
+base_ds = train_ds.dataset if hasattr(train_ds, "dataset") else train_ds
+idx_to_class = {v:k for k,v in base_ds.class_to_idx.items()}
+class_to_idx = base_ds.class_to_idx
+NUM_CLASSES = len(idx_to_class)
+
+# ---- (İsteğe bağlı) Augment örnek grid'i ----
+imgs, labels = next(iter(train_loader))
+m = torch.tensor(mean_rgb).view(1,3,1,1)
+s = torch.tensor(std_rgb).view(1,3,1,1)
+n = min(16, imgs.size(0))
+x = torch.clamp(imgs[:n]*s + m, 0, 1)
+plt.figure(figsize=(12,8))
+for i in range(n):
+    plt.subplot(4,4,i+1)
+    plt.imshow(x[i].permute(1,2,0).cpu().numpy())
+    plt.title(idx_to_class[labels[i].item()][:18])
+    plt.axis("off")
+plt.tight_layout(); plt.show()
+
+def pick_one_image(train_dir: Path):
+    class_dirs = [d for d in Path(train_dir).iterdir() if d.is_dir()]
+    random.seed(42); random.shuffle(class_dirs)
+    for d in class_dirs:
+        imgs = [p for p in d.rglob("*") if p.suffix.lower() in IMG_EXTS]
+        if imgs:
+            return imgs[0]
+    raise RuntimeError("no image found")
+
+# ======================= MODEL + EĞİTİM + DEĞERLENDİRME (PyTorch 2.x) =======================
+import time, torch.nn as nn, torch.optim as optim
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+from torch.amp import GradScaler, autocast
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+EPOCHS = 15
+LR = 1e-3
+USE_TL = True
+SAVE_PATH = "best_model.pt"
+
+# ---- Model ----
+class SimpleCNN(nn.Module):
+    def __init__(self, num_classes=NUM_CLASSES):
+        super().__init__()
+        def conv_block(in_c, out_c):
+            return nn.Sequential(
+                nn.Conv2d(in_c, out_c, 3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(out_c, out_c, 3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(2)
+            )
+        self.feat = nn.Sequential(
+            conv_block(3, 32),
+            conv_block(32, 64),
+            conv_block(64, 128),
+        )
+        self.pool = nn.AdaptiveAvgPool2d((1,1))
+        self.cls  = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5),
+            nn.Linear(512, num_classes)
+        )
+    def forward(self, x):
+        x = self.feat(x); x = self.pool(x); x = self.cls(x); return x
+
+if USE_TL:
+    import torchvision.models as tvm
+    model = tvm.resnet18(weights=tvm.ResNet18_Weights.IMAGENET1K_V1)
+    model.fc = nn.Linear(model.fc.in_features, NUM_CLASSES)
+    for name, p in model.named_parameters():
+        if not name.startswith("fc"):
+            p.requires_grad = False
+    params = [p for p in model.parameters() if p.requires_grad]
+else:
+    model = SimpleCNN(NUM_CLASSES)
+    params = model.parameters()
+
+model = model.to(DEVICE)
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(params, lr=LR)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=2)
+scaler = GradScaler("cuda", enabled=torch.cuda.is_available())
+
+# ---- Epoch koşumu ----
+def run_epoch(loader, train=True):
+    model.train(train)
+    total, correct, loss_sum = 0, 0, 0.0
+    torch.set_grad_enabled(train)
+    for xb, yb in loader:
+        xb = xb.to(DEVICE)
+        yb = torch.as_tensor(yb, device=DEVICE)
+        if train:
+            optimizer.zero_grad(set_to_none=True)
+        with autocast("cuda", enabled=torch.cuda.is_available()):
+            logits = model(xb)
+            loss = criterion(logits, yb)
+        if train:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        loss_sum += loss.item() * xb.size(0)
+        preds = logits.argmax(1)
+        correct += (preds == yb).sum().item()
+        total += xb.size(0)
+    torch.set_grad_enabled(True)
+    return loss_sum/total, correct/total
+
+# ---- Eğitim döngüsü ----
+best_val = float("inf")
+hist = {"tr_loss":[], "tr_acc":[], "va_loss":[], "va_acc":[]}
+t0 = time.time()
+
+for epoch in range(1, EPOCHS+1):
+    tr_loss, tr_acc = run_epoch(train_loader, train=True)
+    with torch.no_grad():
+        va_loss, va_acc = run_epoch(val_loader, train=False)
+    scheduler.step(va_loss)
+
+    hist["tr_loss"].append(tr_loss); hist["tr_acc"].append(tr_acc)
+    hist["va_loss"].append(va_loss); hist["va_acc"].append(va_acc)
+
+    cur_lr = optimizer.param_groups[0]["lr"]
+    print(f"Epoch {epoch:02d} | LR {cur_lr:.2e} | Train {tr_loss:.4f}/{tr_acc:.3f} | Val {va_loss:.4f}/{va_acc:.3f}")
+
+    if va_loss < best_val:
+        best_val = va_loss
+        torch.save({
+            "model": model.state_dict(),
+            "num_classes": NUM_CLASSES,
+            "idx_to_class": idx_to_class
+        }, SAVE_PATH)
+
+# ---- (İsteğe bağlı) Fine-tune ----
+if USE_TL:
+    state = torch.load(SAVE_PATH, map_location=DEVICE)
+    model.load_state_dict(state["model"])
+    for p in model.parameters(): p.requires_grad = True
+    optimizer = optim.Adam(model.parameters(), lr=LR/10)
+    print("\nFine-tune başlıyor (tüm katmanlar açık)...\n")
+    FT_EPOCHS = 5
+    for epoch in range(1, FT_EPOCHS+1):
+        tr_loss, tr_acc = run_epoch(train_loader, train=True)
+        with torch.no_grad():
+            va_loss, va_acc = run_epoch(val_loader, train=False)
+        print(f"[FT] Epoch {epoch:02d} | Train {tr_loss:.4f}/{tr_acc:.3f} | Val {va_loss:.4f}/{va_acc:.3f}")
+        if va_loss < best_val:
+            best_val = va_loss
+            torch.save({
+                "model": model.state_dict(),
+                "num_classes": NUM_CLASSES,
+                "idx_to_class": idx_to_class
+            }, SAVE_PATH)
+
+print(f"\nToplam eğitim süresi: {(time.time()-t0)/60:.1f} dk")
+print(f"En iyi model kaydedildi: {SAVE_PATH}")
+
+# ---- Eğitim grafikleri ----
+plt.figure(figsize=(10,4))
+plt.subplot(1,2,1); plt.plot(hist["tr_loss"], label="train"); plt.plot(hist["va_loss"], label="val"); plt.title("Loss"); plt.legend(); plt.grid(True, alpha=0.3)
+plt.subplot(1,2,2); plt.plot(hist["tr_acc"], label="train"); plt.plot(hist["va_acc"], label="val"); plt.title("Accuracy"); plt.legend(); plt.grid(True, alpha=0.3)
+plt.tight_layout(); plt.show()
+
+# ---- Test değerlendirme ----
+import torch, matplotlib.pyplot as plt
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+
+# --- 1) Checkpoint yükleme ---
+state = torch.load(SAVE_PATH, map_location=DEVICE)
+model.load_state_dict(state["model"], strict=False)
+model.eval()
+
+# --- 2) Sınıf adlarını güvenli çıkar ---
+# Checkpoint'te dict veya liste gelebilir; listeye normalize edelim
+_saved = state.get("idx_to_class", idx_to_class)
+if isinstance(_saved, dict):
+    # dict ise {idx:name}; index sırasına göre listeye çevir
+    num_classes_ckpt = max(_saved.keys()) + 1
+    idx_to_class_ckpt = [ _saved.get(i, f"class_{i}") for i in range(num_classes_ckpt) ]
+else:
+    idx_to_class_ckpt = list(_saved)
+    num_classes_ckpt = len(idx_to_class_ckpt)
+
+labels = list(range(num_classes_ckpt))
+target_names = [idx_to_class_ckpt[i] for i in labels]
+
+# --- 3) Test üzerinde tahmin ---
+if test_loader is not None:
+    y_true, y_pred = [], []
+    with torch.no_grad():
+        for xb, yb in test_loader:
+            xb = xb.to(DEVICE, non_blocking=True)
+            logits = model(xb)
+            y_pred.extend(logits.argmax(1).cpu().tolist())
+            y_true.extend(yb.cpu().tolist())
+
+    # --- 4) Classification report (etiket hizalı) ---
+    print("\nClassification Report (Test):\n")
+    print(classification_report(
+        y_true, y_pred,
+        labels=labels,
+        target_names=target_names,
+        digits=4,
+        zero_division=0
+    ))
+
+    # --- 5) Confusion Matrix (ham sayılar) ---
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    fig, ax = plt.subplots(figsize=(18, 18))
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=target_names)
+    disp.plot(ax=ax, cmap="Blues", xticks_rotation=90, values_format="d", colorbar=True)
+    ax.tick_params(axis='x', labelsize=8)
+    ax.tick_params(axis='y', labelsize=8)
+    plt.tight_layout()
+    plt.show()
+
+    # (İsteğe bağlı) Normalize edilmiş sürüm: her satırın yüzdesi
+    cm_norm = confusion_matrix(y_true, y_pred, labels=labels, normalize="true")
+    fig, ax = plt.subplots(figsize=(18, 18))
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm_norm, display_labels=target_names)
+    disp.plot(ax=ax, cmap="Blues", xticks_rotation=90, values_format=".2f", colorbar=True)
+    ax.set_title("Normalized Confusion Matrix (per true class)")
+    ax.tick_params(axis='x', labelsize=8)
+    ax.tick_params(axis='y', labelsize=8)
+    plt.tight_layout()
+    plt.show()
+else:
+    print("Test set bulunamadı; yalnızca train/val raporlandı.")
+

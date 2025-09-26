@@ -22,3 +22,5 @@ Model açıklanabilirliğini (explainability) artırmak için Grad-CAM dışınd
 Eğitim sürecinde farklı kayıp fonksiyonlarının (loss functions) performans üzerindeki etkilerini analiz etmeyi planlıyorum.
 
 # Linkler
+https://www.kaggle.com/datasets/ahmedelsany/car-brand-classification-dataset
+https://www.kaggle.com/code/haysaa/project1

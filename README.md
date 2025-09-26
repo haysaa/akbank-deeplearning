@@ -20,6 +20,7 @@ CNN mimarisini farklı derinlik ve katman kombinasyonlarıyla test ederek litera
 Transfer learning dışında self-supervised learning ve contrastive learning yaklaşımlarını incelemeyi,
 Model açıklanabilirliğini (explainability) artırmak için Grad-CAM dışında farklı görselleştirme ve yorumlama yöntemlerini araştırmayı,
 Eğitim sürecinde farklı kayıp fonksiyonlarının (loss functions) performans üzerindeki etkilerini analiz etmeyi planlıyorum.
+Kısıtlı vaktimde tam olarak istediğim sonuçları alamadığımı söylemeliyim bu yüzden bu proje üzerine çalışmaya devam edeceğim.
 
 # Linkler
 https://www.kaggle.com/datasets/ahmedelsany/car-brand-classification-dataset

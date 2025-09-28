@@ -12,6 +12,12 @@ Transfer learning ile yapılan eğitimlerde her epoch sonunda elde edilen sonuç
 Ayrıca Grad-CAM görselleştirmeleriyle modelin karar mekanizması incelenmiştir. Eğitim sürecinde kullandığım flag’leri (örneğin USE_TENSORBOARD, USE_EARLY_STOP, USE_CLASS_WEIGHTS vb.) bazı denemelerde değiştirmeyi unutmam, sonuçların farklılık göstermesine neden olmuştur. Bu değişikliklerin model performansı üzerindeki etkisini gözlemlemek önemli bir deneyim oldu.
 <img width="634" height="693" alt="image" src="https://github.com/user-attachments/assets/36d9882f-64aa-49cd-b496-55143e4c3504" />
 <img width="1349" height="847" alt="image" src="https://github.com/user-attachments/assets/c1b81dfb-201d-4c8c-97cd-487e0e4e84c0" />
+**Grad Cam**
+Modelin eğitim sonucunda hangi noktalara daha çok odaklandığına göre bias(yanlılık) olup olmadığını anlamamızı sağlar.
+**Confusion Matrix**
+Modelin hangi sınıflarda hata yaptığını daha net görebilmek için confusion matrix kullanılmıştır:
+Bu görselden, bazı araba markalarının (örneğin X ve Y) birbirine sıkça karıştığı anlaşılmaktadır. Bu durum, görsellerin birbirine çok benzemesinden kaynaklanıyor olabilir.
+Transfer Learning metrik bakımından daha yüksek sonuç almıştır.
 
 
 # Sonuç ve Gelecek Çalışmalar

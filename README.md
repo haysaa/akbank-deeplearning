@@ -1,5 +1,5 @@
 # akbank-deeplearning
-Merhabalar bu repository akbank deep learning projesi için hazırlanmıştır.
+Merhabalar bu repository akbank deep learning projesi için hazırlanmıştır.Project1 projenin ilk halidir.Project 2 son halidir.
 
 # Giriş
 Bu proje, derin öğrenme tabanlı bir görüntü sınıflandırma sistemi geliştirmeyi amaçlamaktadır. Kullanılan veri seti farklı araba markalarına ait görsellerden oluşmaktadır. Projede Convolutional Neural Network (CNN) mimarisi temel alınmış, ayrıca transfer learning yöntemleriyle ResNet gibi önceden eğitilmiş modellerden faydalanılmıştır.

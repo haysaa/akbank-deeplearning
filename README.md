@@ -51,11 +51,28 @@ Transfer Learning metrik bakımından daha yüksek sonuç almıştır.
 
 
 # Sonuç ve Gelecek Çalışmalar
-Kendi CNN modelimde doğruluk oranı düşük kalmıştır, bu durum veri setinin karmaşıklığından ve modelin sınırlı kapasitesinden kaynaklanmaktadır. Buna karşın transfer learning yönteminde doğruluk oranı belirgin şekilde artmıştır. Bu fark, transfer learning’in pratik projelerde neden sıkça tercih edildiğini göstermektedir.
-CNN mimarisini farklı derinlik ve katman kombinasyonlarıyla test ederek literatürdeki performanslarla karşılaştırmayı,
-Transfer learning dışında self-supervised learning ve contrastive learning yaklaşımlarını incelemeyi,
-Model açıklanabilirliğini (explainability) artırmak için Grad-CAM dışında farklı görselleştirme ve yorumlama yöntemlerini araştırmayı,
-Eğitim sürecinde farklı kayıp fonksiyonlarının (loss functions) performans üzerindeki etkilerini analiz etmeyi planlıyorum.
+Bu sonuçlar, 33 sınıftan oluşan bir veri setinde temel CNN mimarisi kullanılarak elde edilmiştir. Çok sınıflı bir problemde temel CNN mimarisi sınırlı kapasiteye sahip olduğu için doğruluk oranı düşük kalmıştır.
+Genel doğruluk (accuracy): %25.09
+Ortalama F1 (macro avg): ~0.24
+Ağırlıklı ortalama F1 (weighted avg): ~0.24
+Yani model, sınıfların büyük çoğunluğunu doğru ayırt etmekte zorlanmıştır.
+🔍 Sınıf Bazlı Sonuçlar
+Görece iyi tahmin edilen markalar: FIAT (f1: 0.45), Chrysler (f1: 0.42), Jeep (f1: 0.41), Aston Martin (recall: 0.61, f1: 0.39)
+Orta seviyede kalan markalar: Land Rover (f1: 0.37), GMC (f1: 0.34), Dodge (f1: 0.29)
+Zayıf tahmin edilen markalar: Ford (f1: 0.09), Kia (f1: 0.02), Honda (f1: 0.12), BMW (f1: 0.13)
+
+Bazı markalarda model tamamen başarısız olurken, bazı markalarda nispeten daha iyi performans göstermiştir. Bu fark, transfer learning’in pratik projelerde neden sıkça tercih edildiğini göstermektedir.
+Gelecek çalışmalarımda,
+**Model Karmaşıklığını Artırma**:
+Katman sayısı ve filtre boyutlarını artırarak daha derin CNN mimarilerini test edip, temel CNN ile elde edilen sonuçlarla karşılaştırmayı düşünüyorum.
+Veri Dengesizliği ve Benzerlik Sorunları:
+Sınıflar arasındaki görsel benzerlikleri azaltmak için daha güçlü data augmentation teknikleri (color jitter, random crop, Gaussian noise) uygulamayı planlıyorum. Ayrıca class weights veya weighted sampler kullanarak az tahmin edilen markaların öğrenilmesini güçlendirmeyi hedefliyorum.
+**Model Açıklanabilirliği (Explainability)**:
+Grad-CAM dışında farklı görselleştirme ve yorumlama yöntemlerini (ör. LIME, SHAP) araştırarak modelin karar verme mekanizmasını daha derinlemesine incelemeyi planlıyorum.
+Farklı Öğrenme Paradigmaları:9
+Transfer learning dışında self-supervised learning ve contrastive learning yaklaşımlarını da test ederek, sınıf ayrımını iyileştirmeyi hedefliyorum.
+**Kayıp Fonksiyonları ve Hiperparametreler**:
+CrossEntropyLoss dışında farklı loss fonksiyonlarının (ör. focal loss) performans üzerindeki etkilerini incelemeyi, ayrıca learning rate ve batch size gibi hiperparametreleri optimize etmeyi planlıyorum.
 
 # Linkler
 https://www.kaggle.com/datasets/ahmedelsany/car-brand-classification-dataset

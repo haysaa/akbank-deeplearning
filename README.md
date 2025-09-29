@@ -65,12 +65,15 @@ Bazı markalarda model tamamen başarısız olurken, bazı markalarda nispeten d
 Gelecek çalışmalarımda,
 **Model Karmaşıklığını Artırma**:
 Katman sayısı ve filtre boyutlarını artırarak daha derin CNN mimarilerini test edip, temel CNN ile elde edilen sonuçlarla karşılaştırmayı düşünüyorum.
-Veri Dengesizliği ve Benzerlik Sorunları:
+
+**Veri Dengesizliği ve Benzerlik Sorunları**:
 Sınıflar arasındaki görsel benzerlikleri azaltmak için daha güçlü data augmentation teknikleri (color jitter, random crop, Gaussian noise) uygulamayı planlıyorum. Ayrıca class weights veya weighted sampler kullanarak az tahmin edilen markaların öğrenilmesini güçlendirmeyi hedefliyorum.
+
 **Model Açıklanabilirliği (Explainability)**:
 Grad-CAM dışında farklı görselleştirme ve yorumlama yöntemlerini (ör. LIME, SHAP) araştırarak modelin karar verme mekanizmasını daha derinlemesine incelemeyi planlıyorum.
 Farklı Öğrenme Paradigmaları:9
 Transfer learning dışında self-supervised learning ve contrastive learning yaklaşımlarını da test ederek, sınıf ayrımını iyileştirmeyi hedefliyorum.
+
 **Kayıp Fonksiyonları ve Hiperparametreler**:
 CrossEntropyLoss dışında farklı loss fonksiyonlarının (ör. focal loss) performans üzerindeki etkilerini incelemeyi, ayrıca learning rate ve batch size gibi hiperparametreleri optimize etmeyi planlıyorum.
 
